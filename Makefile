@@ -1,137 +1,55 @@
-export ARM7_MAJOR	:= 0
-export ARM7_MINOR	:= 7
-export ARM7_PATCH	:= 4
+# Lib version 0.7.4
 
-VERSTRING	:=	$(ARM7_MAJOR).$(ARM7_MINOR).$(ARM7_PATCH)
-#---------------------------------------------------------------------------------
-.SUFFIXES:
-#---------------------------------------------------------------------------------
-ifeq ($(strip $(DEVKITARM)),)
-$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM)
-endif
+BIN_NAME = arm7_default.elf
 
-include $(DEVKITARM)/ds_rules
-#---------------------------------------------------------------------------------
-# TARGET is the name of the output
-# BUILD is the directory where object files & intermediate files will be placed
-# SOURCES is a list of directories containing source code
-# INCLUDES is a list of directories containing extra header files
-#---------------------------------------------------------------------------------
-TARGET		:=	default
-BUILD		:=	build
-SOURCES		:=	source
-INCLUDES	:=	include build
+SRC_DIR = source
+BUILD_DIR = build
 
-#---------------------------------------------------------------------------------
-# options for code generation
-#---------------------------------------------------------------------------------
-ARCH	:=	-march=armv4t -mthumb -mthumb-interwork
+LIBS = -ldswifi7 -lmm7 -lnds7 \
+       -lm -lg -lsysbase -lc -lgcc \
+	   -nodefaultlibs
 
-CFLAGS	:=	-g -Wall -Os\
-		-ffunction-sections -fdata-sections \
- 		-mcpu=arm7tdmi -mtune=arm7tdmi -fomit-frame-pointer\
-		-ffast-math \
-		$(ARCH)
+ARCH = -march=armv4t \
+	   -mthumb \
+	   -mthumb-interwork
 
-CFLAGS	+=	$(INCLUDE) -DARM7
+CFLAGS = -DARM7 \
+		 -mcpu=arm7tdmi \
+		 -mtune=arm7tdmi \
+		 -fomit-frame-pointer \
+		 -ffunction-sections \
+		 -fdata-sections \
+		 -ffast-math \
+		 $(ARCH)
 
-ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-specs=ds_arm7.specs -g $(ARCH) -Wl,--nmagic -Wl,-Map,$(notdir $*).map
+LDFLAGS	= -specs=arm7.specs \
+		  $(ARCH) 
 
+CC = arm-none-eabi-gcc
+LD = arm-none-eabi-gcc
 
-#---------------------------------------------------------------------------------
-# any extra libraries we wish to link with the project
-#---------------------------------------------------------------------------------
-LIBS	:= -ldswifi7 -lmm7 -lnds7
+SRC_FILES = main.c
 
+SRC_OBJ_FILES = $(patsubst %,$(BUILD_DIR)/%,$(addsuffix .o,$(basename $(notdir $(SRC_FILES)))))
 
-#---------------------------------------------------------------------------------
-# list of directories containing libraries, this must be the top level containing
-# include and lib
-#---------------------------------------------------------------------------------
-LIBDIRS	:=	$(LIBNDS)
+$(BUILD_DIR)/$(BIN_NAME): $(SRC_OBJ_FILES)
+	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
+	
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
+.PHONY: all clean build rebuild path_builder install
 
-#---------------------------------------------------------------------------------
-# no real need to edit anything past this point unless you need to add additional
-# rules for different file extensions
-#---------------------------------------------------------------------------------
-ifneq ($(BUILD),$(notdir $(CURDIR)))
-#---------------------------------------------------------------------------------
+all: path_builder build
+rebuild: clean all
+build: $(BUILD_DIR)/$(BIN_NAME)
 
-export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
-
-CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
-CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
-SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-
-export OFILES	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
-
-export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
-			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-			-I$(CURDIR)/$(BUILD)
-
-export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
-
-export DEPSDIR	:=	$(CURDIR)/build
-
-export OUTPUT	:=	$(CURDIR)/$(TARGET)
-
-#---------------------------------------------------------------------------------
-# use CXX for linking C++ projects, CC for standard C
-#---------------------------------------------------------------------------------
-ifeq ($(strip $(CPPFILES)),)
-#---------------------------------------------------------------------------------
-	export LD	:=	$(CC)
-#---------------------------------------------------------------------------------
-else
-#---------------------------------------------------------------------------------
-	export LD	:=	$(CXX)
-#---------------------------------------------------------------------------------
-endif
-#---------------------------------------------------------------------------------
-
-.PHONY: all $(BUILD) clean
-
-all : $(BUILD)
-
-#---------------------------------------------------------------------------------
-$(BUILD):
-	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) -C $(BUILD) -f $(CURDIR)/Makefile
-
-
-#---------------------------------------------------------------------------------
-dist: all
-#---------------------------------------------------------------------------------
-	@tar --exclude=*CVS* --exclude=.svn -cvjf default_arm7-src-$(VERSTRING).tar.bz2 source Makefile
-	@tar -cvjf default_arm7-$(VERSTRING).tar.bz2 default.elf
-
-#---------------------------------------------------------------------------------
-install: all
-#---------------------------------------------------------------------------------
-	mkdir -p $(DESTDIR)$(LIBNDS)
-	cp $(TARGET).elf $(DESTDIR)$(LIBNDS)
-
-#---------------------------------------------------------------------------------
 clean:
-	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).elf  $(TARGET).arm7
+	rm -rf $(BUILD_DIR)
 
+path_builder:
+	mkdir -p $(BUILD_DIR)
 
-#---------------------------------------------------------------------------------
-else
-
-DEPENDS	:=	$(OFILES:.o=.d)
-
-#---------------------------------------------------------------------------------
-# main targets
-#---------------------------------------------------------------------------------
-
-$(OUTPUT).elf	:	$(OFILES) $(LIBNDS)/lib/libnds7.a
-
--include $(DEPENDS)
-
-#---------------------------------------------------------------------------------------
-endif
-#---------------------------------------------------------------------------------------
+install: $(BUILD_DIR)/$(BIN_NAME)
+	install -d $(DESTDIR)/opt/nds
+	install -m 644 $(BUILD_DIR)/$(BIN_NAME) $(DESTDIR)/opt/nds
